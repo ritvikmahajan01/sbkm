@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.base import BaseEstimator
-# sklearn.linear_model._base is deprecated
+# sklearn.linear_model.base is deprecated
 from sklearn.linear_model._base import LinearClassifierMixin
 from sklearn.utils import check_X_y,check_array
 from sklearn.utils.multiclass import check_classification_targets
