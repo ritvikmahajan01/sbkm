@@ -1,9 +1,12 @@
 import numpy as np
 from sklearn.base import BaseEstimator
-from sklearn.linear_model.base import LinearClassifierMixin
+# sklearn.linear_model._base is deprecated
+from sklearn.linear_model._base import LinearClassifierMixin
 from sklearn.utils import check_X_y,check_array
 from sklearn.utils.multiclass import check_classification_targets
-from sklearn.utils.extmath import pinvh, safe_sparse_dot
+from sklearn.utils.extmath import safe_sparse_dot
+# pinvh from sklearn.utils.extmath is deprecated
+from scipy.linalg import pinvh
 from sklearn.metrics.pairwise import pairwise_kernels
 from scipy.optimize import fmin_l_bfgs_b
 from scipy.linalg import solve_triangular
@@ -101,7 +104,8 @@ def _gaussian_cost_grad(X,Y,w,diagA):
     s = norm.cdf(Xw)
     cost = -(np.sum(np.log(s[Y==1] + 1e-6), 0) + \
              np.sum(np.log(1-s[Y==0]+ 1e-6), 0))
-    cost = cost + 0.5*(diagA*(w**2))
+    # There should a dot product here otherwise the cost is not scalar
+    cost = cost + 0.5 * np.dot(diagA, (w**2))
 
     temp = norm.pdf(Xw*t)*t/norm.cdf(Xw*t)
     grad = diagA*w - np.dot(X.T, temp)
@@ -229,7 +233,8 @@ class ProbitRVC(BaseEstimator,LinearClassifierMixin):
         '''
         n_samples,n_features = X.shape
         A         = np.PINF * np.ones(n_features)
-        active    = np.zeros(n_features , dtype = np.bool)
+        # np.bool has been replaced by bool
+        active    = np.zeros(n_features , dtype = bool)
         # If there is an existing model trained previously.
         if self.prev_trained:
             active[0:self.prev_rvcount] = True
@@ -303,12 +308,16 @@ class ProbitRVC(BaseEstimator,LinearClassifierMixin):
         Uses Laplace approximation for calculating posterior distribution for local relevance vectors
         '''
         f_full = lambda w: _gaussian_cost_grad(X, y, w, A)
+        #The minimizer function requires cost and gradient to be separate
+        f_full_cost = lambda w: f_full(w)[0]
+        f_full_grad = lambda w: f_full(w)[1]
         attempts = 1
         a = -2
         b = 2
         for i in range(attempts):
             w_init = a + np.random.random(X.shape[1])*(b-a)
-            Mn = fmin_l_bfgs_b(f_full, x0=w_init, pgtol=tol_mul * self.tol_solver,
+            # Providing the gradient and cost function separately
+            Mn = fmin_l_bfgs_b(f_full_cost, x0=w_init, fprime=f_full_grad, pgtol=tol_mul * self.tol_solver,
                                maxiter=int(self.n_iter_solver / tol_mul))[0]
             check_sign = [0 if Mn[j]*(y[j] - 0.5) >= 0 else 1 for j in range(len(Mn))]
             if sum(check_sign)/len(Mn) < 0.1:
@@ -506,13 +515,15 @@ class SBKM(ProbitRVC):
 
         if self.prev_trained:
             if use_diff:
-                Xdiff = np.array([X[i,:] if X[i,:].tolist() not in self.prev_X else None for i in range(len(X))])
-                ydiff = np.array([y[i] if X[i, :].tolist() not in self.prev_X else None for i in range(len(X))])
-                Xdiff = Xdiff[ydiff != None]
-                ydiff = ydiff[ydiff != None]
-                Xdiff = np.concatenate(Xdiff).reshape((len(Xdiff),2))
-                ydiff = ydiff.astype(np.int64)
-                if len(ydiff) == 0:
+                # The None value handling was not working in the previous version. Fixed that
+                Xdiff_list = [X[i, :] for i in range(len(X)) if X[i, :].tolist() not in self.prev_X]
+                ydiff_list = [y[i] for i in range(len(X)) if X[i, :].tolist() not in self.prev_X]
+
+                # Convert the lists to NumPy arrays
+                if len(Xdiff_list) > 0:
+                    Xdiff = np.array(Xdiff_list)
+                    ydiff = np.array(ydiff_list)
+                else:
                     print("Data is the same! Skip...")
                     return self
             else:
